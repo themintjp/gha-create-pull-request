@@ -2,8 +2,6 @@ const core = require("@actions/core");
 const github = require("@actions/github");
 const { Octokit } = require("@octokit/rest");
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
 function withDefaultValue(v, defaultValue) {
   if (v) return v;
   return defaultValue;
@@ -20,6 +18,11 @@ function extractIssueNumber(s) {
 async function main(args) {
   try {
     const repoFullname = `${args.owner}/${args.repo}`;
+    const auth = process.env.GITHUB_TOKEN;
+    if (!auth) {
+      throw new Error("no github secret");
+    }
+    const octokit = new Octokit({ auth });
 
     const base = await octokit.repos
       .getBranch({ owner: args.owner, repo: args.repo, branch: args.base })
