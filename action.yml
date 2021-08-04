@@ -1,0 +1,12 @@
+name: 'Create Pull Request'
+description: ''
+inputs:
+  base:
+    required: true
+  head:
+    required: true
+  label:
+    required: false
+runs:
+  using: 'node12'
+  main: 'index.js'
