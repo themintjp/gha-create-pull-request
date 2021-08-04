@@ -187,14 +187,22 @@ async function main(args) {
       body: body.join("\n"),
     });
   } else {
-    await octokit.rest.pulls.create({
+    const p = await octokit.rest.pulls.create({
       owner: args.owner,
       repo: args.repo,
       base: args.base,
       head: args.head,
       title: "Release",
       body: relatedStories.join("\n"),
-    });
+    }).then(response => response.data);
+    if (args.label) {
+      await octokit.rest.issues.addLabels({
+        owner: args.owner,
+        repo: args.repo,
+        issue_number: p.number,
+        labels: ["release"],
+      });
+    }
   }
 }
 
