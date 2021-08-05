@@ -7881,7 +7881,7 @@ async function main(args) {
       })
       .then((response) => response.data.commits.map((c) => c.commit.message));
 
-    if (commits.length === 0) {
+    if (commits.length === 0 && !args.force_updating) {
       return;
     }
 
@@ -8062,6 +8062,7 @@ main({
   base: withDefaultValue(core.getInput("base"), process.env.INPUT_BASE),
   head: withDefaultValue(core.getInput("head"), process.env.INPUT_HEAD),
   label: withDefaultValue(core.getInput("label"), process.env.INPUT_LABEL),
+  force_updating: core.getInput("force_updating") === "true",
 });
 
 })();
