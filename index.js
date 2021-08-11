@@ -56,7 +56,7 @@ async function main(args) {
       })
       .then((response) => (response.data.length > 0 ? response.data[0] : null));
 
-    if (releasePull) {
+    if (releasePull && !args.force_updating) {
       const matchVersion = releasePull.body.match(
         /### Related Stories <!-- ([0-9a-f]+)\.\.\.([0-9a-f]+)/
       );
@@ -118,6 +118,10 @@ async function main(args) {
         .sort((x, y) =>
           x.number === y.number ? 0 : x.number < y.number ? -1 : 1
         )
+        .filter(
+          (pull, i, arr) =>
+            i === 0 || (i > 0 && arr[i - 1].number !== pull.number)
+        )
         .forEach((pull) => {
           relatedStories.push(
             `- ${pull.title} [#${pull.number}](${pull.html_url})`
@@ -147,6 +151,12 @@ async function main(args) {
           }
           return x.repository_fullname < y.repository_fullname ? -1 : 1;
         })
+        .filter(
+          (issue, i, arr) =>
+            i === 0 ||
+            (i > 0 &&
+              arr[i - 1].repository_fullname !== issue.repository_fullname)
+        )
         .forEach((issue) => {
           const issueNum =
             issue.repository_fullname === repoFullname
@@ -162,6 +172,9 @@ async function main(args) {
         });
       relatedStories.push("\n");
     }
+
+    // console.log(relatedStories);
+    // return;
 
     if (releasePull) {
       const body = [];
@@ -223,5 +236,9 @@ main({
   base: withDefaultValue(core.getInput("base"), process.env.INPUT_BASE),
   head: withDefaultValue(core.getInput("head"), process.env.INPUT_HEAD),
   label: withDefaultValue(core.getInput("label"), process.env.INPUT_LABEL),
-  force_updating: core.getInput("force_updating") === "true",
+  force_updating:
+    withDefaultValue(
+      core.getInput("force_updating"),
+      process.env.INPUT_FORCE_UPDATING
+    ) === "true",
 });
