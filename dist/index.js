@@ -7873,6 +7873,8 @@ async function main(args) {
 
     const basehead = `${base.slice(0, 7)}...${head.slice(0, 7)}`;
 
+    core.info("check basehead commits count.");
+
     const commits = await octokit.repos
       .compareCommitsWithBasehead({
         owner: args.owner,
@@ -7886,7 +7888,10 @@ async function main(args) {
       return;
     }
 
-    const releasePull = await octokit.rest.pulls
+    core.info(`${commits.length} commits found.`);
+    core.info("check release pull-request.");
+
+    const release_pull = await octokit.rest.pulls
       .list({
         owner: args.owner,
         repo: args.repo,
@@ -7896,31 +7901,41 @@ async function main(args) {
       })
       .then((response) => (response.data.length > 0 ? response.data[0] : null));
 
-    if (releasePull && !args.force_updating) {
-      const matchVersion = releasePull.body.match(
-        /### Related Stories <!-- ([0-9a-f]+)\.\.\.([0-9a-f]+)/
-      );
-      if (
-        matchVersion &&
-        basehead === `${matchVersion[1]}...${matchVersion[2]}`
-      ) {
-        core.info("Already up to date.");
-        return;
+    if (release_pull) {
+      core.info(`release pull-request#${release_pull.number} found.`);
+      if (!args.force_updating) {
+        const matchVersion = release_pull.body.match(
+          /### Related Stories <!-- ([0-9a-f]+)\.\.\.([0-9a-f]+)/
+        );
+        if (
+          matchVersion &&
+          basehead === `${matchVersion[1]}...${matchVersion[2]}`
+        ) {
+          core.info("Already up to date.");
+          return;
+        }
       }
+    } else {
+      core.info("this repository does not have a release pull-request.");
     }
 
-    const issueNumbers = await commits
+    const issue_numbers = await commits
       .map((m) => extractIssueNumber(m))
       .filter((n) => n > 0);
+
+    core.info(`${issue_numbers.length} issues detected in the commit log.`);
+
     const pulls = [];
     const issues = [];
-    for (const n of issueNumbers) {
+    for (const n of issue_numbers) {
       let iss = await octokit.rest.issues
         .get({ owner: args.owner, repo: args.repo, issue_number: n })
         .then((response) => response.data);
       if (iss.pull_request) {
+        core.info(`check related pull-request#${iss.number}`);
         pulls.push(iss);
       } else {
+        core.info(`check related issue#${iss.number}`);
         issues.push(iss);
       }
       // このissueを外部から参照したissueを関連issueに含める
@@ -7931,29 +7946,35 @@ async function main(args) {
           repo: args.repo,
           issue_number: n,
         })
-        .then((response) =>
-          response.data
-            .filter(
-              (i) =>
-                i.event === "cross-referenced" &&
-                i.source &&
-                i.source.issue &&
-                !i.source.issue.pull_request
-            )
-            .forEach((i) => {
+        .then((response) => {
+          response.data.forEach((i) => {
+            if (
+              i.event === "cross-referenced" &&
+              i.source &&
+              i.source.issue &&
+              !i.source.issue.pull_request
+            ) {
               issues.push(i.source.issue);
-            })
-        );
+            }
+            const add =
+              i.source && i.source.issue
+                ? `and issue#${i.source.issue.number} `
+                : "";
+            core.info(
+              `related ${i.event} event ${add}found in #${iss.number}.`
+            );
+          });
+        });
     }
 
-    const relatedStories = [];
+    const related_stories = [];
 
     if (pulls.length > 0 || issues.length > 0) {
-      relatedStories.push(`### Related Stories <!-- ${basehead} -->\n`);
+      related_stories.push(`### Related Stories <!-- ${basehead} -->`, "\n");
     }
 
     if (pulls.length > 0) {
-      relatedStories.push("*PullRequests*\n");
+      related_stories.push("*PullRequests*", "\n");
       pulls
         .sort((x, y) =>
           x.number === y.number ? 0 : x.number < y.number ? -1 : 1
@@ -7963,15 +7984,15 @@ async function main(args) {
             i === 0 || (i > 0 && arr[i - 1].number !== pull.number)
         )
         .forEach((pull) => {
-          relatedStories.push(
+          related_stories.push(
             `- ${pull.title} [#${pull.number}](${pull.html_url})`
           );
         });
-      relatedStories.push("\n");
+      related_stories.push("\n");
     }
 
     if (issues.length > 0) {
-      relatedStories.push("*Issues*\n");
+      related_stories.push("*Issues*", "\n");
       issues
         .map((i) => ({
           ...i,
@@ -8006,22 +8027,23 @@ async function main(args) {
                   issue.number
                 }`
               : `${issue.repository_fullname}#${issue.number}`;
-          relatedStories.push(
+          related_stories.push(
             `- ${issue.title} [${issueNum}](${issue.html_url})`
           );
         });
-      relatedStories.push("\n");
+      related_stories.push("\n");
     }
 
-    // console.log(relatedStories);
+    // console.log(related_stories);
     // return;
 
-    if (releasePull) {
-      core.info("update pull request description");
-      const body = [];
-      if (releasePull.body.indexOf("### Related Stories") > -1) {
+    const body = [];
+
+    if (release_pull) {
+      core.info("update pull request with the following description.");
+      if (release_pull.body.indexOf("### Related Stories") > -1) {
         let isInRelStories = false;
-        releasePull.body.split("\n").forEach((ln) => {
+        release_pull.body.split("\n").forEach((ln) => {
           if (isInRelStories) {
             if (ln.startsWith("#")) {
               body.push(ln);
@@ -8029,26 +8051,26 @@ async function main(args) {
             }
           } else if (ln.startsWith("### Related Stories")) {
             isInRelStories = true;
-            body.push(...relatedStories);
+            body.push(...related_stories);
           } else {
             body.push(ln);
           }
         });
       } else {
-        if (releasePull.body.length > 0) {
-          body.push(releasePull.body);
+        if (release_pull.body.length > 0) {
+          body.push(release_pull.body);
         }
-        body.push(...relatedStories);
+        body.push(...related_stories);
       }
       await octokit.rest.pulls.update({
         owner: args.owner,
         repo: args.repo,
-        pull_number: releasePull.number,
+        pull_number: release_pull.number,
         body: body.join("\n"),
       });
-      core.info(body.join("\n"));
     } else {
-      core.info("create pull request");
+      core.info("create pull request with the following description.");
+      related_stories.forEach((s) => body.push(s));
       const p = await octokit.rest.pulls
         .create({
           owner: args.owner,
@@ -8056,7 +8078,7 @@ async function main(args) {
           base: args.base,
           head: args.head,
           title: "Release",
-          body: relatedStories.join("\n"),
+          body: body.join("\n"),
         })
         .then((response) => response.data);
       if (args.label) {
@@ -8067,8 +8089,9 @@ async function main(args) {
           labels: ["release"],
         });
       }
-      core.info(relatedStories.join("\n"));
     }
+    core.info(">")
+    body.forEach((s) => core.info(`> ${s}`));
   } catch (error) {
     core.setFailed(error.message);
   }
