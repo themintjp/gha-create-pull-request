@@ -43,6 +43,7 @@ async function main(args) {
       .then((response) => response.data.commits.map((c) => c.commit.message));
 
     if (commits.length === 0 && !args.force_updating) {
+      core.info("Already up to date.");
       return;
     }
 
@@ -64,7 +65,7 @@ async function main(args) {
         matchVersion &&
         basehead === `${matchVersion[1]}...${matchVersion[2]}`
       ) {
-        core.info("no update");
+        core.info("Already up to date.");
         return;
       }
     }
@@ -177,6 +178,7 @@ async function main(args) {
     // return;
 
     if (releasePull) {
+      core.info("update pull request description");
       const body = [];
       if (releasePull.body.indexOf("### Related Stories") > -1) {
         let isInRelStories = false;
@@ -205,7 +207,9 @@ async function main(args) {
         pull_number: releasePull.number,
         body: body.join("\n"),
       });
+      core.info(body.join("\n"));
     } else {
+      core.info("create pull request");
       const p = await octokit.rest.pulls
         .create({
           owner: args.owner,
@@ -224,15 +228,21 @@ async function main(args) {
           labels: ["release"],
         });
       }
+      core.info(relatedStories.join("\n"));
     }
   } catch (error) {
     core.setFailed(error.message);
   }
 }
 
+const [default_owner, default_repo] =
+  process.env.GITHUB_REPOSITORY.indexOf("/") > -1
+    ? process.env.GITHUB_REPOSITORY.split("/")
+    : ["", ""];
+
 main({
-  owner: github.context.repo.owner,
-  repo: github.context.repo.repo,
+  owner: withDefaultValue(github.context.repo.owner, default_owner),
+  repo: withDefaultValue(github.context.repo.repo, default_repo),
   base: withDefaultValue(core.getInput("base"), process.env.INPUT_BASE),
   head: withDefaultValue(core.getInput("head"), process.env.INPUT_HEAD),
   label: withDefaultValue(core.getInput("label"), process.env.INPUT_LABEL),
