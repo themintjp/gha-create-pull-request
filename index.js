@@ -130,9 +130,7 @@ async function main(args) {
 
     const related_stories = [];
 
-    if (pulls.length > 0 || issues.length > 0) {
-      related_stories.push(`### Related Stories <!-- ${basehead} -->`, "\n");
-    }
+    related_stories.push(`### Related Stories <!-- ${basehead} -->`, "\n");
 
     if (pulls.length > 0) {
       related_stories.push("*PullRequests*", "\n");
